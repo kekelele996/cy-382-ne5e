@@ -17,8 +17,31 @@ docker compose up -d --build
 - 根据目的地、时间和预算做旅伴匹配评分。
 - 行程协作看板维护每日安排、住宿和交通方案。
 - 预算管理展示计划费用和实际花费。
+- 行程共享费用清算：成员登记本人垫付支出，其他成员确认后计入，一键生成零和清算单。
 - Socket.IO 支持行程成员即时聊天。
 - 旅行日记和用户主页为后续扩展预留清晰模块。
+
+## 费用清算规则
+
+- 成员只能登记本人垫付且属于当前行程的支出；同行程同票据号唯一，重复登记会被拒绝。
+- 登记人不能确认自己的支出，须由其他成员确认；驳回的支出进入「待重提」，由登记人修改后重新提交。
+- 存在待确认或待重提支出时不能生成清算单。
+- 生成清算单时按已确认支出均摊计算每人净额（整数分计算，余数确定性分摊，净额严格零和），超出计划预算自动标记超支。
+- 清算单、支出冻结（SETTLED）与行程状态在同一数据库事务落盘；行程行锁 + 唯一索引保证并发生成只成功一次，条件更新保证重复确认只成功一次。
+
+### 主要接口
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| POST | /api/expenses | 登记本人垫付支出（需登录、为行程成员） |
+| GET | /api/expenses?tripId= | 查询行程支出列表 |
+| POST | /api/expenses/:id/confirm | 确认他人支出（幂等） |
+| POST | /api/expenses/:id/reject | 驳回他人支出，进入待重提 |
+| POST | /api/expenses/:id/resubmit | 登记人修改并重新提交 |
+| POST | /api/settlements | 生成清算单（单事务，幂等） |
+| GET | /api/settlements?tripId= | 查询清算单与每人净额 |
+| POST | /api/trips/:id/join | 加入行程成为成员 |
+| GET/POST | /api/trips/:id/budgets | 查询/设置分类计划预算 |
 
 ## 本地开发方式
 
@@ -53,9 +76,16 @@ npm run dev
 │       ├── constants
 │       ├── config
 │       └── modules
+│           ├── user          # 注册登录
+│           ├── trip          # 行程、成员、分类预算
+│           ├── expense       # 支出登记/确认/驳回/重提、清算单生成
+│           ├── companion     # 旅伴匹配
+│           ├── chat          # 即时聊天
+│           └── diary         # 旅行日记
 ├── database
 ├── frontend
 │   └── src
+│       └── pages             # SettlementPage 费用清算页
 └── docker-compose.yml
 ```
 
